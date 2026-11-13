@@ -460,6 +460,7 @@ with water_tab:
                 x=state_table["Records"], y=state_table["State"], orientation="h",
                 marker_color=["#b9c4c3", "#f2b64d"],
                 text=[f"{value:,}" for value in state_table["Records"]], textposition="outside",
+                textfont={"color": "#353a3c", "size": 11},
                 hovertemplate="%{y}<br>%{x:,} records<extra></extra>",
             )
         )
@@ -469,7 +470,8 @@ with water_tab:
             paper_bgcolor="rgba(255,255,255,0)", plot_bgcolor="#f1f2f1",
             font={"family": "Inter, Segoe UI, Arial, sans-serif", "color": "#52585a", "size": 11},
             xaxis={"showgrid": False, "showticklabels": False, "zeroline": False},
-            yaxis={"showgrid": False, "title": None}, showlegend=False,
+            yaxis={"showgrid": False, "title": None, "tickfont": {"color": "#353a3c", "size": 11}},
+            showlegend=False,
         )
         with audit_col2.container(border=True):
             st.markdown('<div class="section-head">Reported state records</div>', unsafe_allow_html=True)
