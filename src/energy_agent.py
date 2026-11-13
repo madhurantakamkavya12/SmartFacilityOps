@@ -1,17 +1,9 @@
-from pathlib import Path
 from typing import TypedDict
 
 import pandas as pd
 from langgraph.graph import END, START, StateGraph
 
-
-project_folder = Path(__file__).resolve().parents[1]
-data_file = (
-    project_folder
-    / "data"
-    / "processed"
-    / "energy_2013-07-13_to_2013-08-04_1min.csv"
-)
+from database import DEFAULT_DB_PATH, load_energy_data
 
 timezone = "Asia/Kolkata"
 start_date = pd.Timestamp("2013-07-13")
@@ -20,22 +12,16 @@ expected_minutes = ((end_date - start_date).days + 1) * 24 * 60
 
 
 class EnergyAgentState(TypedDict):
-    data_path: str
-    data: pd.DataFrame | None
+    data: pd.DataFrame
     metrics: dict[str, float | int | str]
-    recommendations: list[str]
+    recommendations: list[dict[str, str]]
 
 
 def analyze_energy(state: EnergyAgentState) -> dict:
-    """Calculate energy and data-quality metrics for the full period."""
-    data = state.get("data")
-    if data is None:
-        csv_path = Path(state["data_path"])
-        if not csv_path.exists():
-            raise FileNotFoundError(f"Data file not found: {csv_path}")
-        data = pd.read_csv(csv_path)
-    else:
-        data = data.copy()
+    """Calculate metrics from readings provided by the SQL data-access layer."""
+    data = state["data"].copy()
+    if data.empty:
+        raise ValueError("No energy readings were supplied to the Energy Agent.")
 
     required_columns = [
         "timestamp",
@@ -47,7 +33,7 @@ def analyze_energy(state: EnergyAgentState) -> dict:
         if column not in data.columns
     ]
     if missing_columns:
-        raise ValueError(f"CSV is missing columns: {missing_columns}")
+        raise ValueError(f"SQL readings are missing required columns: {missing_columns}")
 
     data["timestamp"] = pd.to_datetime(
         data["timestamp"], utc=True
@@ -104,43 +90,64 @@ def analyze_energy(state: EnergyAgentState) -> dict:
 
 
 def recommend_actions(state: EnergyAgentState) -> dict:
-    """Create transparent recommendations from the calculated metrics."""
+    """Create structured, evidence-based recommendations from calculated metrics."""
     metrics = state["metrics"]
     recommendations = []
 
     # This is a starter threshold for this prototype, not a universal rule.
     if metrics["ac_share_percent"] >= 30:
         recommendations.append(
-            f"ACs account for {metrics['ac_share_percent']}% of "
-            "recorded energy. Compare AC run times with occupancy and "
-            "room temperatures before changing schedules or setpoints."
+            {
+                "issue": "High AC share of recorded electricity",
+                "reason": "The two AC submeters account for a large share of measured mains energy.",
+                "evidence": f"{metrics['ac_energy_kwh']:.2f} kWh · {metrics['ac_share_percent']:.1f}% of recorded mains energy",
+                "action": "Compare AC run times with occupancy and room temperatures before changing schedules or setpoints.",
+                "priority": "Medium",
+            }
         )
 
     if metrics["coverage_percent"] < 95:
         recommendations.append(
-            f"{metrics['missing_minutes']} minutes have no readings "
-            "from both mains meters. Check sensor and data collection "
-            "availability before treating the period total as complete."
+            {
+                "issue": "Incomplete mains-meter coverage",
+                "reason": "Some expected one-minute slots lack readings from both mains meters.",
+                "evidence": f"{metrics['missing_minutes']:,} missing minutes · {metrics['coverage_percent']:.1f}% coverage",
+                "action": "Check meter connectivity and collection gaps before relying on the period total.",
+                "priority": "High",
+            }
         )
 
     if metrics["anomaly_count"] > 0:
         recommendations.append(
-            f"{metrics['anomaly_count']} minutes "
-            f"({metrics['anomaly_percent']}%) have AC power above "
-            "combined mains power. Review those readings before using "
-            "them for automated decisions."
+            {
+                "issue": "AC reading exceeds combined mains",
+                "reason": "The AC submeters report more power than the two mains meters for these minutes.",
+                "evidence": f"{metrics['anomaly_count']:,} minutes · {metrics['anomaly_percent']:.2f}% of recorded mains minutes",
+                "action": "Review timestamp alignment, meter mapping, and submeter readings before using these records for decisions.",
+                "priority": "Review",
+            }
         )
 
     if metrics["peak_power_w"] > 2 * metrics["median_power_w"]:
         recommendations.append(
-            f"Mains power peaked at {metrics['peak_power_w']} W on "
-            f"{metrics['peak_datetime']}. Review which loads were "
-            "running then; a peak alone does not prove energy was wasted."
+            {
+                "issue": "High observed mains peak",
+                "reason": "The peak is more than twice the period median; a peak alone does not prove waste.",
+                "evidence": f"{metrics['peak_power_w']:,.1f} W at {metrics['peak_datetime']} · median {metrics['median_power_w']:,.1f} W",
+                "action": "Inspect the operating schedule and loads around the peak before considering changes.",
+                "priority": "Medium",
+            }
         )
 
     if not recommendations:
         recommendations.append(
-            "No rule-based recommendations were triggered for this period."
+            {
+                "issue": "No review rules were triggered",
+                "reason": "The measured metrics did not cross the current starter thresholds.",
+                "evidence": f"{metrics['coverage_percent']:.1f}% mains coverage; {metrics['anomaly_count']} consistency flags",
+                "action": "Continue monitoring and validate thresholds against labeled facility data.",
+                "priority": "Info",
+            }
         )
 
     return {"recommendations": recommendations}
@@ -159,10 +166,14 @@ energy_agent = builder.compile()
 
 
 if __name__ == "__main__":
+    if not DEFAULT_DB_PATH.exists():
+        raise FileNotFoundError(
+            f"SQLite database not found: {DEFAULT_DB_PATH}. Run src/setup_database.py first."
+        )
+    sql_readings = load_energy_data(DEFAULT_DB_PATH)
     result = energy_agent.invoke(
         {
-            "data_path": str(data_file),
-            "data": None,
+            "data": sql_readings,
             "metrics": {},
             "recommendations": [],
         }

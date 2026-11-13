@@ -1,0 +1,9 @@
+{
+  "method": "same-hour historical mean baseline",
+  "holdout_date": "2013-08-04",
+  "hours_evaluated": 20,
+  "minimum_hour_coverage_percent": 80.0,
+  "mae_kW": 0.3116431570435423,
+  "rmse_kW": 0.5080124951488554,
+  "uses_future_observations": false
+}

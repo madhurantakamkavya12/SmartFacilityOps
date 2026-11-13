@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -72,11 +73,31 @@ if test_day.empty:
         "to evaluate the forecast."
     )
 
-mae_w = (test_day["actual_W"] - test_day["predicted_W"]).abs().mean()
+forecast_errors = test_day["actual_W"] - test_day["predicted_W"]
+mae_w = forecast_errors.abs().mean()
+rmse_w = (forecast_errors.pow(2).mean()) ** 0.5
 
 print(f"Forecast check date: {last_date}")
 print("Hours evaluated:", len(test_day))
 print(f"Mean absolute error: {mae_w / 1000:.2f} kW")
+print(f"Root mean squared error: {rmse_w / 1000:.2f} kW")
+
+evaluation = {
+    "method": "same-hour historical mean baseline",
+    "holdout_date": last_date.isoformat(),
+    "hours_evaluated": int(len(test_day)),
+    "minimum_hour_coverage_percent": minimum_coverage * 100,
+    "mae_kW": float(mae_w / 1000),
+    "rmse_kW": float(rmse_w / 1000),
+    "uses_future_observations": False,
+}
+evaluation_file = (
+    project_folder
+    / "data"
+    / "processed"
+    / "forecast_evaluation_2013-08-04.json"
+)
+evaluation_file.write_text(json.dumps(evaluation, indent=2), encoding="utf-8")
 
 # After evaluating on the final day, use all valid hours to forecast
 # the following day.
@@ -114,6 +135,7 @@ output_file = (
 forecast.to_csv(output_file, index=False)
 
 print(f"\n24-hour baseline forecast saved to: {output_file}")
+print(f"Forecast evaluation saved to: {evaluation_file}")
 forecast_preview = forecast.head(6).copy()
 forecast_preview["forecast_power_W"] = (
     forecast_preview["forecast_power_W"].round(2)

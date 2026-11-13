@@ -7,7 +7,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from energy_agent import energy_agent
-from database import DEFAULT_DB_PATH, load_energy_data
+from database import DEFAULT_DB_PATH, load_dashboard_data
+from reporting import build_html_report
 
 
 st.set_page_config(
@@ -115,6 +116,7 @@ st.markdown(
         background:#f5f5f4; color:#3c4041; padding:8px 11px;
         font-size:.73rem; font-weight:600; text-align:center;
     }
+    .integration-chip { color:#287444; background:#edf7ef; border:1px solid #d6ead9; border-radius:999px; padding:6px 10px; font-size:.66rem; font-weight:650; margin-top:7px; text-align:center; }
     .eyebrow { color:#73777a; font-size:.65rem; font-weight:700; letter-spacing:.105em; text-transform:uppercase; }
     .kpi-card {
         min-height:91px; padding:11px 13px 9px; border-right:1px solid #ededec;
@@ -143,7 +145,9 @@ st.markdown(
         border:1px solid #e9eae9; border-radius:11px; background:#fafaf9;
     }
     .recommendation-number { flex:0 0 28px; width:28px; height:28px; display:grid; place-items:center; background:#ffce73; color:#352710; border-radius:50%; font-size:.7rem; font-weight:800; }
-    .recommendation-text { color:#45494b; font-size:.78rem; line-height:1.45; }
+    .recommendation-issue { color:#292c2d; font-size:.77rem; font-weight:700; line-height:1.35; }
+    .recommendation-priority { display:inline-block; color:#785718; background:#fff1d1; border-radius:999px; padding:2px 7px; font-size:.58rem; font-weight:700; text-transform:uppercase; margin:0 0 5px; }
+    .recommendation-text { color:#565b5d; font-size:.70rem; line-height:1.42; margin-top:4px; }
     .footer-note { color:#8a8f90; font-size:.67rem; text-align:center; border-top:1px solid #eceeed; margin-top:23px; padding-top:13px; }
     @media (max-width: 760px) {
         [data-testid="stMainBlockContainer"] { padding:1rem .85rem 1.6rem; margin-top:.4rem; }
@@ -156,8 +160,8 @@ st.markdown(
 
 project_folder = Path(__file__).resolve().parents[1]
 processed_folder = project_folder / "data" / "processed"
-processed_file = processed_folder / "energy_2013-07-13_to_2013-08-04_1min.csv"
 forecast_file = processed_folder / "energy_forecast_2013-08-05.csv"
+forecast_evaluation_file = processed_folder / "forecast_evaluation_2013-08-04.json"
 water_profile_file = processed_folder / "water_signal_profile.json"
 database_file = DEFAULT_DB_PATH
 
@@ -165,9 +169,6 @@ timezone = "Asia/Kolkata"
 period_start = pd.Timestamp("2013-07-13 00:00:00", tz=timezone)
 period_end = pd.Timestamp("2013-08-04 23:59:00", tz=timezone)
 
-if not processed_file.exists():
-    st.error(f"Processed energy data not found: {processed_file}")
-    st.stop()
 if not forecast_file.exists():
     st.error(f"Forecast file not found: {forecast_file}")
     st.stop()
@@ -190,11 +191,10 @@ def load_csv(csv_path):
 
 
 @st.cache_data
-def run_energy_agent(csv_path, file_modified_time, sql_readings):
-    """Run the LangGraph workflow using readings loaded from SQL."""
+def run_energy_agent(sql_readings):
+    """Run LangGraph over the DataFrame returned by the SQL data layer."""
     return energy_agent.invoke(
         {
-            "data_path": csv_path,
             "data": sql_readings,
             "metrics": {},
             "recommendations": [],
@@ -202,65 +202,12 @@ def run_energy_agent(csv_path, file_modified_time, sql_readings):
     )
 
 
-def build_html_report(metrics, recommendations, forecast_frame, water_profile):
-    """Create a self-contained HTML report that can also be printed to PDF."""
-    safe_recommendations = "".join(
-        f"<li>{html.escape(str(item))}</li>" for item in recommendations
-    )
-    forecast_rows = "".join(
-        "<tr>"
-        f"<td>{html.escape(row.timestamp.strftime('%d %b %Y, %H:%M'))}</td>"
-        f"<td>{row.forecast_power_W:,.1f} W</td>"
-        f"<td>{row.forecast_energy_kWh:.3f} kWh</td>"
-        "</tr>"
-        for row in forecast_frame.itertuples(index=False)
-    )
-    water_section = "<p>Water signal profile is not available.</p>"
-    if water_profile:
-        water_section = (
-            "<p><b>Rows profiled:</b> "
-            f"{water_profile['row_count']:,} &nbsp; · &nbsp; "
-            f"<b>Rows passing checks:</b> {water_profile['valid_row_count']:,} &nbsp; · &nbsp; "
-            f"<b>Rows flagged:</b> {water_profile['invalid_row_count']:,}</p>"
-            "<p>Water litres are not estimated because the stream requires validated pulse calibration and false-signal handling.</p>"
-        )
-    return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FacilityOps Energy Report</title>
-<style>
-body{{margin:0;background:#edf3f2;color:#202223;font:15px/1.55 Inter,'Segoe UI',Arial,sans-serif}}
-main{{max-width:920px;margin:32px auto;background:#fff;padding:42px 48px;border-radius:18px;box-shadow:0 12px 36px #25494a20}}
-.brand{{font-size:12px;letter-spacing:.13em;text-transform:uppercase;color:#777;font-weight:700}}
-h1{{font-size:32px;letter-spacing:-.05em;margin:8px 0 2px}} .sub{{color:#777;margin-top:0}}
-.stats{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:24px 0}}
-.stat{{padding:13px;background:#f3f4f3;border-radius:10px}} .label{{font-size:11px;color:#777;text-transform:uppercase}}
-.value{{font-size:23px;font-weight:700;letter-spacing:-.04em}} section{{margin-top:25px}}
-h2{{font-size:18px;margin-bottom:7px}} .note{{color:#777;font-size:13px}}
-.callout{{background:#fff6e5;border-left:3px solid #ffb83f;padding:12px 15px;border-radius:0 8px 8px 0}}
-table{{width:100%;border-collapse:collapse;font-size:13px}}th,td{{padding:8px;border-bottom:1px solid #e8e9e8;text-align:left}}th{{background:#f3f4f3}}
-button{{background:#ffb83f;border:0;border-radius:20px;padding:9px 15px;font-weight:700;cursor:pointer}}
-@media print{{body{{background:#fff}}main{{margin:0 auto;box-shadow:none;padding:20px}}button{{display:none}}}}
-</style></head><body><main>
-<div class="brand">⚡ FacilityOps · Milestone 1</div><h1>Energy analytics report</h1>
-<p class="sub">iAWE New Delhi residential dataset · {html.escape(metrics['period'])} · India time</p>
-<button onclick="window.print()">Print / Save as PDF</button>
-<div class="stats">
-<div class="stat"><div class="label">Mains energy</div><div class="value">{metrics['mains_energy_kwh']:,.2f} kWh</div></div>
-<div class="stat"><div class="label">Both ACs</div><div class="value">{metrics['ac_energy_kwh']:,.2f} kWh</div></div>
-<div class="stat"><div class="label">AC share</div><div class="value">{metrics['ac_share_percent']:.1f}%</div></div>
-<div class="stat"><div class="label">Mains coverage</div><div class="value">{metrics['coverage_percent']:.1f}%</div></div>
-</div>
-<section><h2>Load and data quality</h2><p>Peak mains power was {metrics['peak_power_w']:,.1f} W at {html.escape(metrics['peak_datetime'])} (India time). {metrics['anomaly_count']:,} minutes ({metrics['anomaly_percent']:.2f}%) had AC power above combined mains power; these are review flags, not confirmed faults.</p>
-<div class="callout">Energy values describe this one-home dataset. Recommendations use transparent starter rules and have not been validated against labelled anomalies.</div></section>
-<section><h2>Agent recommendations</h2><ul>{safe_recommendations}</ul></section>
-<section><h2>Next-day hourly baseline</h2><p class="note">A same-hour historical average for August 5, 2013. This is a baseline forecast, not a validated machine-learning prediction.</p>
-<table><thead><tr><th>India time</th><th>Average power</th><th>Hourly energy</th></tr></thead><tbody>{forecast_rows}</tbody></table></section>
-<section><h2>Water meter signal quality</h2>{water_section}</section>
-<p class="note">Generated from the FacilityOps Milestone 1 prototype. Water record counts are not litres; no per-meter pulse conversion is claimed.</p>
-</main></body></html>"""
-
-
-data = load_energy_data(database_file)
+sql_readings, stored_alerts = load_dashboard_data(database_file)
+if sql_readings.empty or sql_readings["total_mains_W"].notna().sum() == 0:
+    st.error("SQLite has no complete mains readings for the dashboard. Rebuild the database from processed data.")
+    st.stop()
+source_record_count = sql_readings.attrs.get("source_record_count", 0)
+data = sql_readings.copy()
 forecast = load_csv(str(forecast_file))
 data = (
     data.sort_values("timestamp")
@@ -269,17 +216,27 @@ data = (
     .rename_axis("timestamp")
     .reset_index()
 )
-agent_result = run_energy_agent(
-    str(processed_file), database_file.stat().st_mtime, data
-)
+agent_result = run_energy_agent(data)
 metrics = agent_result["metrics"]
 recommendations = agent_result["recommendations"]
+forecast_evaluation = None
+if forecast_evaluation_file.exists():
+    with forecast_evaluation_file.open(encoding="utf-8") as evaluation_stream:
+        forecast_evaluation = json.load(evaluation_stream)
 water_profile = None
 if water_profile_file.exists():
     with water_profile_file.open(encoding="utf-8") as profile_stream:
         water_profile = json.load(profile_stream)
 
-report_html = build_html_report(metrics, recommendations, forecast, water_profile)
+report_html = build_html_report(
+    metrics,
+    recommendations,
+    forecast,
+    water_profile,
+    alerts=stored_alerts,
+    forecast_evaluation=forecast_evaluation,
+    source_record_count=source_record_count,
+)
 
 brand_col, spacer_col, report_col = st.columns([3, 4, 1.5], vertical_alignment="center")
 with brand_col:
@@ -309,7 +266,8 @@ with title_col:
     )
 with period_col:
     st.markdown(
-        '<div class="period-chip">▦ &nbsp; 13 Jul — 04 Aug 2013 &nbsp;⌄</div>',
+        '<div class="period-chip">▦ &nbsp; 13 Jul — 04 Aug 2013</div>'
+        f'<div class="integration-chip">● SQLite connected · {source_record_count:,} meter rows</div>',
         unsafe_allow_html=True,
     )
 
@@ -341,6 +299,20 @@ with energy_tab:
             'not as confirmed faults.</div>',
             unsafe_allow_html=True,
         )
+    with st.expander(f"Review stored SQL alerts ({len(stored_alerts):,})"):
+        if stored_alerts.empty:
+            st.caption("No alert records are stored for this facility.")
+        else:
+            st.dataframe(
+                stored_alerts.rename(columns={
+                    "alert_type": "Alert type",
+                    "created_at": "Timestamp",
+                    "severity": "Priority",
+                    "details": "Explanation",
+                })[["Timestamp", "Alert type", "Priority", "Explanation"]],
+                hide_index=True,
+                width="stretch",
+            )
 
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
     trend_col, breakdown_col = st.columns([3.2, 1.05], gap="medium")
@@ -409,6 +381,13 @@ with energy_tab:
         )
 
     with st.expander("View all 24 forecast hours"):
+        if forecast_evaluation:
+            st.caption(
+                f"Chronological holdout on {forecast_evaluation['holdout_date']}: "
+                f"{forecast_evaluation['hours_evaluated']} hours · "
+                f"MAE {forecast_evaluation['mae_kW']:.3f} kW · "
+                f"RMSE {forecast_evaluation['rmse_kW']:.3f} kW."
+            )
         forecast_table = forecast.copy()
         forecast_table["forecast_power_W"] = forecast_table["forecast_power_W"].round(1)
         forecast_table["forecast_energy_kWh"] = forecast_table["forecast_energy_kWh"].round(3)
@@ -418,10 +397,18 @@ with energy_tab:
     st.markdown('<div class="section-note">Transparent starter rules · prompts for staff review</div>', unsafe_allow_html=True)
     recommendation_columns = st.columns(min(3, len(recommendations)))
     for index, recommendation in enumerate(recommendations):
+        priority = html.escape(str(recommendation["priority"]))
+        issue = html.escape(str(recommendation["issue"]))
+        evidence = html.escape(str(recommendation["evidence"]))
+        reason = html.escape(str(recommendation["reason"]))
+        action = html.escape(str(recommendation["action"]))
         recommendation_columns[index % len(recommendation_columns)].markdown(
             '<div class="recommendation-card">'
-            f'<div class="recommendation-number">{index + 1:02d}</div>'
-            f'<div class="recommendation-text">{html.escape(str(recommendation))}</div></div>',
+            f'<div class="recommendation-number">{index + 1:02d}</div><div>'
+            f'<div class="recommendation-priority">{priority} priority</div>'
+            f'<div class="recommendation-issue">{issue}</div>'
+            f'<div class="recommendation-text">{reason}<br><b>Evidence:</b> {evidence}'
+            f'<br><b>Action:</b> {action}</div></div></div>',
             unsafe_allow_html=True,
         )
 

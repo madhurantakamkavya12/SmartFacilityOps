@@ -12,12 +12,19 @@ The repository has an Energy Intelligence prototype backed by a local SQL databa
 - `src/forecast_energy.py` evaluates an hourly same-time-of-day baseline on
   the final day, then creates a 24-hour forecast for the next day.
 - `src/energy_agent.py` calculates energy, coverage, and consistency metrics,
-  then produces transparent rule-based recommendations with LangGraph.
+  then produces structured, evidence-backed rule-based recommendations with
+  LangGraph. It accepts the DataFrame supplied by the SQL layer and contains no
+  CSV loading fallback.
 - `sql/schema.sql` defines the eight relational entities in the supplied ERD.
 - `src/setup_database.py` creates a local SQLite database and imports the
   processed electricity channels and rule-based review alerts.
-- `src/dashboard.py` reads energy records from SQLite and presents the metrics,
+- `src/database.py` is the SQL data-access layer. It loads the channel totals and
+  stored alerts in one connection and supplies the readings to both dashboard
+  views and the Energy Agent.
+- `src/dashboard.py` presents the SQL-backed metrics, alert records,
   recommendations, historical profile, and forecast in Streamlit.
+- `src/reporting.py` builds the downloadable HTML report from current metrics,
+  alerts, recommendations, forecast, and water quality profile.
 
 SQLite is used for this local prototype because it is a relational SQL database
 and needs no separate server. The supplied ERD is the model: Milestone 1 loads
@@ -50,9 +57,16 @@ From the repository root in PowerShell:
 
 The first command rebuilds the processed energy CSV. The database setup command
 imports its four electricity channels into `data\processed\facilityops.db`;
-the dashboard reads energy metrics from this SQL database. The 24-hour forecast
-remains a processed CSV output. Raw dataset files under `data\raw` should remain
-unchanged.
+the dashboard and Energy Agent receive their energy readings from this SQL
+database. The 24-hour forecast remains a processed CSV output, with the
+chronological holdout evaluation stored as JSON. Raw dataset files under
+`data\raw` should remain unchanged.
+
+Run the automated Milestone 1 checks from the repository root:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
 
 ## Water data status
 
@@ -84,11 +98,17 @@ into `water_usage` without a validated calibration.
 | Requirement | Current status |
 | --- | --- |
 | Integrate utility and IoT data | Electricity channels and rule-review alerts are stored in SQLite; water is profiled as a signal feed. |
-| Build the Energy Agent | LangGraph metrics and rule-based recommendations are implemented. |
+| Build the Energy Agent | LangGraph calculates metrics from the SQL data-access DataFrame and returns structured, rule-based recommendations. |
 | Energy consumption analytics | Period totals, AC share, data coverage, anomalies, and an hourly baseline forecast are available. |
 | Energy monitoring dashboard | Streamlit dashboard shows energy KPIs, recommendations, and forecast. |
 | Water monitoring | Dashboard shows water meter signal quality; no litres are inferred. |
 | Anomaly detection accuracy of at least 85% | Not measurable yet: there are no labeled anomaly examples. Current flags are heuristics, not validated model accuracy. |
+
+The implemented alert is a consistency heuristic: combined AC-submeter power
+exceeds combined mains power in a one-minute interval. Synthetic tests check
+that the rule and alert storage behave as expected; those tests are not an
+estimate of real-world anomaly accuracy. The forecast evaluation uses a
+chronological final-day holdout and reports MAE and RMSE separately.
 
 Work on later milestones is outside the current scope. The iAWE data represents
 one residence, so results should be presented as a prototype rather than

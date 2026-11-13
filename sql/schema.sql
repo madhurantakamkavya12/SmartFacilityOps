@@ -86,3 +86,11 @@ CREATE INDEX IF NOT EXISTS idx_energy_usage_asset_time
     ON energy_usage (asset_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_alerts_facility_created
     ON alerts (facility_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_occupancy_facility_time
+    ON occupancy_records (facility_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_maintenance_asset_date
+    ON maintenance_records (asset_id, maintenance_date);
+CREATE INDEX IF NOT EXISTS idx_security_facility_time
+    ON security_events (facility_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_cost_facility_date
+    ON cost_reports (facility_id, report_date);
