@@ -1,0 +1,6 @@
+.venv/
+tmp/
+data/raw/
+SmartFacilityOps_Project.zip
+__pycache__/
+*.pyc

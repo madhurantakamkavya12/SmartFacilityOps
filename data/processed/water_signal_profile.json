@@ -1,0 +1,77 @@
+{
+  "source_file": "data/raw/iawe/water_meter.csv",
+  "row_count": 32250081,
+  "valid_row_count": 32250056,
+  "invalid_row_count": 25,
+  "timestamp_filter_seconds": {
+    "minimum": 1350000000,
+    "maximum": 1400000000
+  },
+  "timestamp_start_india": "2013-05-30T14:08:32.819999933+05:30",
+  "timestamp_end_india": "2013-08-02T12:59:59.890000105+05:30",
+  "meter_record_counts": {
+    "1": 8507771,
+    "2": 23742285
+  },
+  "state_record_counts": {
+    "0": 27011459,
+    "1": 5238597
+  },
+  "known_meter_ids": [
+    "1",
+    "2"
+  ],
+  "invalid_examples": [
+    {
+      "meter_id": "1",
+      "timestamp_raw": "13731.00",
+      "state_raw": "1373780844"
+    },
+    {
+      "meter_id": "1",
+      "timestamp_raw": "137511.00",
+      "state_raw": "1375174042"
+    },
+    {
+      "meter_id": "1",
+      "timestamp_raw": "1374882093.12",
+      "state_raw": "1374882207"
+    },
+    {
+      "meter_id": "1",
+      "timestamp_raw": "13744332471.00",
+      "state_raw": "1374432442"
+    },
+    {
+      "meter_id": "1",
+      "timestamp_raw": "99999999999.99",
+      "state_raw": "1"
+    },
+    {
+      "meter_id": "2",
+      "timestamp_raw": "132.00",
+      "state_raw": "1373851055"
+    },
+    {
+      "meter_id": "2",
+      "timestamp_raw": "1372.00",
+      "state_raw": "1373995040"
+    },
+    {
+      "meter_id": "2",
+      "timestamp_raw": "13750.00",
+      "state_raw": "\\N"
+    },
+    {
+      "meter_id": "2",
+      "timestamp_raw": "137542.00",
+      "state_raw": "1375427841"
+    },
+    {
+      "meter_id": "2",
+      "timestamp_raw": "1373782.00",
+      "state_raw": "1373782640"
+    }
+  ],
+  "volume_estimate_available": false
+}
