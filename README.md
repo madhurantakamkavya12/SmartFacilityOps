@@ -5,7 +5,7 @@ A prototype for facility operations analytics, based on the project brief in
 
 ## Current implementation
 
-The repository has an Energy Intelligence prototype:
+The repository has an Energy Intelligence prototype backed by a local SQL database:
 
 - `src/compare_ac.py` aligns iAWE mains and air-conditioner readings into
   one-minute records for July 13 through August 4, 2013.
@@ -13,8 +13,20 @@ The repository has an Energy Intelligence prototype:
   the final day, then creates a 24-hour forecast for the next day.
 - `src/energy_agent.py` calculates energy, coverage, and consistency metrics,
   then produces transparent rule-based recommendations with LangGraph.
-- `src/dashboard.py` presents the energy metrics, recommendations, historical
-  profile, and forecast in Streamlit.
+- `sql/schema.sql` defines the eight relational entities in the supplied ERD.
+- `src/setup_database.py` creates a local SQLite database and imports the
+  processed electricity channels and rule-based review alerts.
+- `src/dashboard.py` reads energy records from SQLite and presents the metrics,
+  recommendations, historical profile, and forecast in Streamlit.
+
+SQLite is used for this local prototype because it is a relational SQL database
+and needs no separate server. The supplied ERD is the model: Milestone 1 loads
+`facilities`, `assets`, `energy_usage`, and `alerts`. Occupancy, maintenance,
+security, and cost tables are created but remain empty until corresponding
+observations are available. `energy_usage` adds an asset reference and a unit
+field so each meter channel and its watt reading can be identified. The database
+file is generated locally and excluded from Git; the schema and loader are
+committed instead.
 
 The current energy-agent run reports 360.46 kWh recorded mains energy, 121.52
 kWh for both ACs, 97.9% mains-minute coverage, and 212 minutes where AC power
@@ -32,11 +44,15 @@ From the repository root in PowerShell:
 ```powershell
 .\.venv\Scripts\python.exe .\src\compare_ac.py
 .\.venv\Scripts\python.exe .\src\forecast_energy.py
+.\.venv\Scripts\python.exe .\src\setup_database.py
 .\.venv\Scripts\streamlit.exe run .\src\dashboard.py
 ```
 
-The first command rebuilds the processed energy CSV used by the agent and
-dashboard. Raw dataset files under `data\raw` should remain unchanged.
+The first command rebuilds the processed energy CSV. The database setup command
+imports its four electricity channels into `data\processed\facilityops.db`;
+the dashboard reads energy metrics from this SQL database. The 24-hour forecast
+remains a processed CSV output. Raw dataset files under `data\raw` should remain
+unchanged.
 
 ## Water data status
 
@@ -58,15 +74,16 @@ Use `src/inspect_water.py` for a quick 10,000-row sample or
 ```
 
 The full scan saves `data/processed/water_signal_profile.json`, which the
-Streamlit dashboard displays under **Water Meter Signal Quality**. The profile
-contains validation counts and examples of flagged rows; it does not estimate
-water volume.
+Streamlit dashboard displays under **Water quality**. The profile contains
+validation counts and examples of flagged rows; it does not estimate water
+volume. Water-meter assets are registered in SQL, but no litres are inserted
+into `water_usage` without a validated calibration.
 
 ## Current scope: Milestone 1
 
 | Requirement | Current status |
 | --- | --- |
-| Integrate utility and IoT data | Electricity data is processed; water data is profiled as a signal feed. |
+| Integrate utility and IoT data | Electricity channels and rule-review alerts are stored in SQLite; water is profiled as a signal feed. |
 | Build the Energy Agent | LangGraph metrics and rule-based recommendations are implemented. |
 | Energy consumption analytics | Period totals, AC share, data coverage, anomalies, and an hourly baseline forecast are available. |
 | Energy monitoring dashboard | Streamlit dashboard shows energy KPIs, recommendations, and forecast. |
@@ -75,4 +92,5 @@ water volume.
 
 Work on later milestones is outside the current scope. The iAWE data represents
 one residence, so results should be presented as a prototype rather than
-commercial facility performance.
+commercial facility performance. Do not populate the other ERD areas with
+invented occupancy, maintenance, security, or cost records.

@@ -21,18 +21,21 @@ expected_minutes = ((end_date - start_date).days + 1) * 24 * 60
 
 class EnergyAgentState(TypedDict):
     data_path: str
+    data: pd.DataFrame | None
     metrics: dict[str, float | int | str]
     recommendations: list[str]
 
 
 def analyze_energy(state: EnergyAgentState) -> dict:
     """Calculate energy and data-quality metrics for the full period."""
-    csv_path = Path(state["data_path"])
-
-    if not csv_path.exists():
-        raise FileNotFoundError(f"Data file not found: {csv_path}")
-
-    data = pd.read_csv(csv_path)
+    data = state.get("data")
+    if data is None:
+        csv_path = Path(state["data_path"])
+        if not csv_path.exists():
+            raise FileNotFoundError(f"Data file not found: {csv_path}")
+        data = pd.read_csv(csv_path)
+    else:
+        data = data.copy()
 
     required_columns = [
         "timestamp",
@@ -159,6 +162,7 @@ if __name__ == "__main__":
     result = energy_agent.invoke(
         {
             "data_path": str(data_file),
+            "data": None,
             "metrics": {},
             "recommendations": [],
         }

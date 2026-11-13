@@ -4,3 +4,6 @@ data/raw/
 SmartFacilityOps_Project.zip
 __pycache__/
 *.pyc
+*.db
+*.sqlite
+*.sqlite3
